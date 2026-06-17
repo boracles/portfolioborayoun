@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <title>Youn Bora Portfolio</title>
+
+    <link rel="stylesheet" href="style.css" />
+
+    <!-- PDF.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  </head>
+
+  <body>
+    <main class="portfolio-viewer">
+      <header class="top-bar">
+        <div class="title-area">
+          <h1>Youn Bora Portfolio</h1>
+          <p>New Media UX Research · XR · Healthcare Experience Design</p>
+        </div>
+
+        <a
+          class="pdf-link"
+          href="portfolio.pdf"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          PDF 열기
+        </a>
+      </header>
+
+      <section class="viewer-area">
+        <button class="nav-button left" id="prevPage" aria-label="이전 페이지">
+          ‹
+        </button>
+
+        <div class="canvas-wrap">
+          <canvas id="pdfCanvas"></canvas>
+        </div>
+
+        <button class="nav-button right" id="nextPage" aria-label="다음 페이지">
+          ›
+        </button>
+      </section>
+
+      <footer class="page-status">
+        <span id="currentPage">1</span>
+        <span>/</span>
+        <span id="totalPages">-</span>
+      </footer>
+    </main>
+
+    <script>
+      const pdfUrl = "portfolio.pdf";
+
+      let pdfDoc = null;
+      let pageNum = 1;
+      let pageRendering = false;
+      let pageNumPending = null;
+
+      const canvas = document.getElementById("pdfCanvas");
+      const ctx = canvas.getContext("2d");
+
+      pdfjsLib.GlobalWorkerOptions.workerSrc =
+        "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+
+      function getScale(page) {
+        const viewport = page.getViewport({ scale: 1 });
+
+        const isMobile = window.innerWidth <= 768;
+
+        // 데스크톱에서는 화면을 넓게 쓰고, 모바일에서는 여백을 줄임
+        const horizontalPadding = isMobile ? 24 : 120;
+        const maxPdfWidth = isMobile
+          ? window.innerWidth - horizontalPadding
+          : 1500;
+
+        const availableWidth = Math.min(
+          window.innerWidth - horizontalPadding,
+          maxPdfWidth,
+        );
+
+        return availableWidth / viewport.width;
+      }
+
+      function renderPage(num) {
+        pageRendering = true;
+
+        pdfDoc.getPage(num).then(function (page) {
+          const scale = getScale(page);
+          const viewport = page.getViewport({ scale });
+
+          // 고해상도 화면 대응: 맥북/레티나에서 흐릿하게 보이는 문제 해결
+          const outputScale = window.devicePixelRatio || 1;
+
+          canvas.width = Math.floor(viewport.width * outputScale);
+          canvas.height = Math.floor(viewport.height * outputScale);
+
+          canvas.style.width = Math.floor(viewport.width) + "px";
+          canvas.style.height = Math.floor(viewport.height) + "px";
+
+          const transform =
+            outputScale !== 1 ? [outputScale, 0, 0, outputScale, 0, 0] : null;
+
+          const renderContext = {
+            canvasContext: ctx,
+            viewport,
+            transform,
+          };
+
+          const renderTask = page.render(renderContext);
+
+          renderTask.promise.then(function () {
+            pageRendering = false;
+
+            if (pageNumPending !== null) {
+              renderPage(pageNumPending);
+              pageNumPending = null;
+            }
+          });
+        });
+
+        document.getElementById("currentPage").textContent = num;
+        updateNavButtons();
+      }
+
+      function queueRenderPage(num) {
+        if (pageRendering) {
+          pageNumPending = num;
+        } else {
+          renderPage(num);
+        }
+      }
+
+      function goPrevPage() {
+        if (pageNum <= 1) return;
+        pageNum--;
+        queueRenderPage(pageNum);
+      }
+
+      function goNextPage() {
+        if (!pdfDoc || pageNum >= pdfDoc.numPages) return;
+        pageNum++;
+        queueRenderPage(pageNum);
+      }
+
+      function updateNavButtons() {
+        const prevButton = document.getElementById("prevPage");
+        const nextButton = document.getElementById("nextPage");
+
+        if (!pdfDoc) return;
+
+        prevButton.disabled = pageNum <= 1;
+        nextButton.disabled = pageNum >= pdfDoc.numPages;
+      }
+
+      document.getElementById("prevPage").addEventListener("click", goPrevPage);
+      document.getElementById("nextPage").addEventListener("click", goNextPage);
+
+      document.addEventListener("keydown", function (event) {
+        if (event.key === "ArrowLeft") goPrevPage();
+        if (event.key === "ArrowRight") goNextPage();
+      });
+
+      let resizeTimer = null;
+
+      window.addEventListener("resize", function () {
+        clearTimeout(resizeTimer);
+
+        resizeTimer = setTimeout(function () {
+          if (pdfDoc) {
+            queueRenderPage(pageNum);
+          }
+        }, 150);
+      });
+
+      pdfjsLib
+        .getDocument(pdfUrl)
+        .promise.then(function (loadedPdf) {
+          pdfDoc = loadedPdf;
+          document.getElementById("totalPages").textContent = pdfDoc.numPages;
+          renderPage(pageNum);
+          updateNavButtons();
+        })
+        .catch(function (error) {
+          console.error("PDF 로드 실패:", error);
+          alert(
+            "PDF를 불러오지 못했습니다. portfolio.pdf 파일명이 정확한지 확인하세요.",
+          );
+        });
+    </script>
+  </body>
+</html>
